@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/views/identity_confirm_screen.dart';
 import '../../features/auth/views/login_screen.dart';
 import '../../features/chat/views/chat_list_screen.dart';
 import '../../features/match/views/match_home_screen.dart';
@@ -21,6 +22,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/identity-confirm',
+        pageBuilder: (context, state) => const NoTransitionPage(
+          child: IdentityConfirmScreen(),
+        ),
       ),
       ShellRoute(
         builder: (context, state, child) {
