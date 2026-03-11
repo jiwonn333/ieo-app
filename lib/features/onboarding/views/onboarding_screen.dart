@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../auth/models/signup_step.dart';
+import '../../auth/providers/auth_providers.dart';
 
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
-class _OnboardingScreenState extends State<OnboardingScreen> {
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final PageController _controller = PageController();
   int _currentIndex = 0;
 
@@ -42,20 +45,31 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   bool get _isLast => _currentIndex == _pages.length - 1;
 
-  void _goLogin() {
+  Future<void> _goLogin() async {
+    await ref
+        .read(signupFlowRepositoryProvider)
+        .saveStep(SignupStep.login);
+
+    if (!mounted) return;
     context.go('/login');
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (_isLast) {
-      _goLogin();
+      await _goLogin();
       return;
     }
 
-    _controller.nextPage(
+    await _controller.nextPage(
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeOut,
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -73,12 +87,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   onPressed: _goLogin,
                   child: Text(
                     '건너뛰기',
-                    style: AppTextStyles.titleMedium
-                        .copyWith(color: AppColors.textSecondary),
+                    style: AppTextStyles.titleMedium.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
-
               Expanded(
                 child: PageView.builder(
                   controller: _controller,
@@ -96,16 +110,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   },
                 ),
               ),
-
               const SizedBox(height: 10),
-
               _PageIndicator(
                 count: _pages.length,
                 currentIndex: _currentIndex,
               ),
-
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 height: 60,
@@ -162,9 +172,7 @@ class _OnboardingPage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 40),
-
             AnimatedScale(
               duration: const Duration(milliseconds: 320),
               curve: Curves.easeOutBack,
@@ -203,9 +211,7 @@ class _OnboardingPage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 24),
-
             AnimatedOpacity(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeOut,
@@ -227,9 +233,7 @@ class _OnboardingPage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 26),
-
             AnimatedSlide(
               duration: const Duration(milliseconds: 280),
               curve: Curves.easeOutCubic,
@@ -244,9 +248,7 @@ class _OnboardingPage extends StatelessWidget {
                 ),
               ),
             ),
-
             const SizedBox(height: 18),
-
             AnimatedOpacity(
               duration: const Duration(milliseconds: 240),
               curve: Curves.easeOut,
@@ -257,7 +259,6 @@ class _OnboardingPage extends StatelessWidget {
                 style: AppTextStyles.bodyMedium.copyWith(height: 1.6),
               ),
             ),
-
             if (data.highlightText != null) ...[
               const SizedBox(height: 26),
               AnimatedOpacity(
@@ -287,7 +288,7 @@ class _OnboardingPage extends StatelessWidget {
                   ),
                 ),
               ),
-            ]
+            ],
           ],
         ),
       ),

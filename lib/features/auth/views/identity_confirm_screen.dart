@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_radius.dart';
@@ -6,53 +7,56 @@ import '../../../core/constants/app_spacing.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../shared/widgets/ieo_filled_button.dart';
+import '../models/auth_user.dart';
+import '../providers/auth_providers.dart';
 import '../widgets/auth_header.dart';
 
-class IdentityConfirmScreen extends StatefulWidget {
-  const IdentityConfirmScreen({super.key});
+class IdentityConfirmScreen extends ConsumerStatefulWidget {
+  final AuthUser user;
+
+  const IdentityConfirmScreen({super.key, required this.user});
 
   @override
-  State<IdentityConfirmScreen> createState() => _IdentityConfirmScreenState();
+  ConsumerState<IdentityConfirmScreen> createState() =>
+      _IdentityConfirmScreenState();
 }
 
-class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
-  final String? fetchedName = '신지원';
-  final String? fetchedBirthDate = '20000112';
-  final String? fetchedGender = '여성';
-
+class _IdentityConfirmScreenState extends ConsumerState<IdentityConfirmScreen> {
+  late final TextEditingController _appNicknameController;
+  late final TextEditingController _kakaoNicknameController;
   late final TextEditingController _nameController;
-  late final TextEditingController _birthController;
-  String? _selectedGender;
+  late final TextEditingController _birthDateController;
+  bool _isSaving = false;
 
-  bool get _isNameLocked => fetchedName != null && fetchedName!.trim().isNotEmpty;
-  bool get _isBirthLocked =>
-      fetchedBirthDate != null && fetchedBirthDate!.trim().isNotEmpty;
-  bool get _isGenderLocked =>
-      fetchedGender != null && fetchedGender!.trim().isNotEmpty;
-
-  bool get _canProceed {
-    final hasName = _nameController.text.trim().isNotEmpty;
-    final hasBirth = _birthController.text.trim().isNotEmpty;
-    final hasGender = (_selectedGender ?? '').isNotEmpty;
-    return hasName && hasBirth && hasGender;
-  }
+  bool get _canProceed =>
+      _appNicknameController.text.trim().isNotEmpty && !_isSaving;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: fetchedName ?? '');
-    _birthController = TextEditingController(text: fetchedBirthDate ?? '');
-    _selectedGender = fetchedGender;
-    _nameController.addListener(_refresh);
-    _birthController.addListener(_refresh);
+
+    _appNicknameController = TextEditingController(
+      text: widget.user.nickname ?? '',
+    )..addListener(_refresh);
+
+    _kakaoNicknameController = TextEditingController(
+      text: widget.user.nickname ?? '',
+    );
+
+    _nameController = TextEditingController(text: widget.user.name ?? '');
+
+    _birthDateController = TextEditingController(
+      text: widget.user.birthDateText ?? '',
+    );
   }
 
   @override
   void dispose() {
-    _nameController.removeListener(_refresh);
-    _birthController.removeListener(_refresh);
+    _appNicknameController.removeListener(_refresh);
+    _appNicknameController.dispose();
+    _kakaoNicknameController.dispose();
     _nameController.dispose();
-    _birthController.dispose();
+    _birthDateController.dispose();
     super.dispose();
   }
 
@@ -60,8 +64,52 @@ class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
     setState(() {});
   }
 
+  Future<void> _handleNext() async {
+    if (!_canProceed) return;
+
+    try {
+      setState(() => _isSaving = true);
+
+      final repo = ref.read(userRepositoryProvider);
+
+      await repo.createUser(
+        authUser: widget.user,
+        appNickname: _appNicknameController.text.trim(),
+      );
+
+      await ref.read(signupFlowRepositoryProvider).clear();
+
+      if (!mounted) return;
+      context.go('/match');
+    } catch (e) {
+      if (!mounted) return;
+
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('회원가입 실패'),
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasName = (widget.user.name ?? '').trim().isNotEmpty;
+    final hasBirthDate = widget.user.birthDate != null;
+    final hasGender = widget.user.gender != null;
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -72,16 +120,11 @@ class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const AuthHeader(
-                progress: 0.66,
-                showBackButton: true,
-              ),
+              const AuthHeader(progress: 0.66, showBackButton: true),
               const SizedBox(height: 44),
               Text(
                 '본인 정보가 맞는지\n정확히 확인해주세요',
-                style: AppTextStyles.headlineLarge.copyWith(
-                  height: 1.3,
-                ),
+                style: AppTextStyles.headlineLarge.copyWith(height: 1.3),
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
@@ -92,21 +135,40 @@ class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
                 ),
               ),
               const SizedBox(height: 36),
+
+              _IdentityField(
+                label: '카카오 닉네임',
+                controller: _kakaoNicknameController,
+                hintText: '카카오 닉네임',
+                readOnly: true,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
+              _IdentityField(
+                label: '앱에서 사용할 닉네임',
+                controller: _appNicknameController,
+                hintText: '앱에서 사용할 닉네임을 입력해주세요',
+                readOnly: false,
+              ),
+              const SizedBox(height: AppSpacing.lg),
+
               _IdentityField(
                 label: '이름',
                 controller: _nameController,
-                hintText: '이름 정보가 없을 경우 입력해주세요',
-                readOnly: _isNameLocked,
+                hintText: '이름 정보가 아직 연동되지 않았어요',
+                readOnly: true,
               ),
               const SizedBox(height: AppSpacing.lg),
+
               _IdentityField(
                 label: '생년월일',
-                controller: _birthController,
-                hintText: 'YYYYMMDD',
-                readOnly: _isBirthLocked,
+                controller: _birthDateController,
+                hintText: '생년월일 정보가 아직 연동되지 않았어요',
+                readOnly: true,
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: AppSpacing.lg),
+
               Text(
                 '성별',
                 style: AppTextStyles.titleMedium.copyWith(
@@ -114,34 +176,28 @@ class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: _GenderButton(
-                      label: '남성',
-                      selected: _selectedGender == '남성',
-                      enabled: !_isGenderLocked,
-                      onTap: () {
-                        if (_isGenderLocked) return;
-                        setState(() => _selectedGender = '남성');
-                      },
-                    ),
+              Container(
+                width: double.infinity,
+                height: 62,
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  border: Border.all(color: AppColors.border),
+                ),
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  widget.user.genderKo ?? '성별 정보가 아직 연동되지 않았어요',
+                  style: AppTextStyles.titleMedium.copyWith(
+                    color: widget.user.genderKo != null
+                        ? AppColors.textPrimary
+                        : AppColors.textHint,
                   ),
-                  const SizedBox(width: AppSpacing.lg),
-                  Expanded(
-                    child: _GenderButton(
-                      label: '여성',
-                      selected: _selectedGender == '여성',
-                      enabled: !_isGenderLocked,
-                      onTap: () {
-                        if (_isGenderLocked) return;
-                        setState(() => _selectedGender = '여성');
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
+
               const SizedBox(height: AppSpacing.xxl),
+
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(AppSpacing.lg),
@@ -151,18 +207,27 @@ class _IdentityConfirmScreenState extends State<IdentityConfirmScreen> {
                   border: Border.all(color: const Color(0xFFF1E3B9)),
                 ),
                 child: Text(
-                  '주의사항\n이름, 생년월일, 성별은 가입 후 프로필에서 수정할 수 있습니다.\n단, 수정 전 내용은 기록으로 함께 보관됩니다.',
+                  [
+                    '안내',
+                    hasName && hasBirthDate && hasGender
+                        ? '이름, 생년월일, 성별 정보가 정상적으로 확인되었어요.'
+                        : '현재 일부 카카오 동의항목은 아직 연동 전입니다.',
+                    '회원 저장 시 카카오 식별값(kakaoId) 기준으로 가입 상태를 관리하게 됩니다.',
+                  ].join('\n'),
                   style: AppTextStyles.bodyMedium.copyWith(
                     color: AppColors.primaryDark,
                     height: 1.7,
                   ),
                 ),
               ),
+
               const SizedBox(height: AppSpacing.xxxl),
+
               IeoFilledButton(
-                label: '다음',
-                onPressed: _canProceed ? () => context.go('/match') : null,
+                label: _isSaving ? '저장 중...' : '다음',
+                onPressed: _canProceed ? _handleNext : null,
               ),
+
               const SizedBox(height: AppSpacing.lg),
             ],
           ),
@@ -214,13 +279,13 @@ class _IdentityField extends StatelessWidget {
             ),
             suffixIcon: readOnly
                 ? const Padding(
-              padding: EdgeInsets.only(right: 14),
-              child: Icon(
-                Icons.lock_outline_rounded,
-                color: AppColors.textHint,
-                size: 20,
-              ),
-            )
+                    padding: EdgeInsets.only(right: 14),
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      color: AppColors.textHint,
+                      size: 20,
+                    ),
+                  )
                 : null,
             suffixIconConstraints: const BoxConstraints(
               minWidth: 44,
@@ -229,61 +294,6 @@ class _IdentityField extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GenderButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _GenderButton({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final backgroundColor = selected
-        ? const Color(0xFFFFF6DE)
-        : enabled
-        ? AppColors.surface
-        : AppColors.surfaceAlt;
-
-    final borderColor = selected
-        ? AppColors.primary
-        : enabled
-        ? AppColors.borderStrong
-        : AppColors.border;
-
-    final textColor = selected
-        ? AppColors.primaryDark
-        : enabled
-        ? AppColors.textSecondary
-        : AppColors.textHint;
-
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
-      child: Container(
-        height: 62,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(AppRadius.lg),
-          border: Border.all(color: borderColor, width: 1.4),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: AppTextStyles.titleMedium.copyWith(
-            color: textColor,
-          ),
-        ),
-      ),
     );
   }
 }
